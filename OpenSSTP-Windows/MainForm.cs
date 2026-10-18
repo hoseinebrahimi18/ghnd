@@ -1,5 +1,7 @@
 using System.Drawing.Drawing2D;
 using System.Net.NetworkInformation;
+using System.Runtime.InteropServices;
+using Microsoft.Win32;
 
 namespace OpenSSTP.Windows;
 
@@ -8,7 +10,7 @@ public sealed class MainForm : Form
     TextBox host = new() { PlaceholderText = "VPN Gate hostname or IP[:port]", Width = 280 };
     TextBox user = new() { PlaceholderText = "Username (VPN Gate: vpn)", Width = 280 };
     TextBox pass = new() { PlaceholderText = "Password (VPN Gate often blank)", Width = 280, UseSystemPasswordChar = true };
-    CheckBox rememberMe = new() { Text = "Remember me / مرا به خاطر بسپار", AutoSize = true, MinimumSize = new Size(300, 28), Height = 28, ForeColor = Color.FromArgb(220, 228, 240), BackColor = Color.Transparent, Margin = new Padding(0, 8, 0, 4), UseVisualStyleBackColor = false };
+    CheckBox rememberMe = new() { Text = "Remember me / مرا به خاطر بسپار", AutoSize = true, ForeColor = Color.FromArgb(220, 228, 240), BackColor = Color.Transparent, Margin = new Padding(0, 3, 0, 0) };
     Label state = new() { Text = "NOT CONNECTED", AutoSize = true, ForeColor = Color.FromArgb(255, 190, 90), Font = new Font("Segoe UI", 10, FontStyle.Bold) };
     Label rx = new() { Text = "↓ 0 KB/s", AutoSize = true, ForeColor = Color.White, Font = new Font("Segoe UI Semibold", 17) };
     Label tx = new() { Text = "↑ 0 KB/s", AutoSize = true, ForeColor = Color.White, Font = new Font("Segoe UI Semibold", 17) };
@@ -23,14 +25,34 @@ public sealed class MainForm : Form
     DateTime lastStatusPoll = DateTime.MinValue;
     string? lastAdapterId;
     long lastIn, lastOut;
+    readonly NotifyIcon trayIcon = new();
+    readonly ContextMenuStrip trayMenu = new();
+    readonly ToolStripMenuItem trayStatusItem = new("Open-SSTP — Not connected") { Enabled = false };
+    readonly ToolStripMenuItem trayConnectionItem = new("Connect VPN");
+    readonly ToolStripMenuItem trayAutoStartItem = new("Start with Windows");
+    Icon? trayIconIdle, trayIconBusy, trayIconOn;
+    EventWaitHandle? showEvent;
+    RegisteredWaitHandle? showEventWait;
+    bool startHidden;
+    bool exitRequested;
+    bool exiting;
+    bool trayReady;
+    bool trayHintShown;
 
-    public MainForm()
+    const string AutoStartKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
+    const string AutoStartValue = "OpenSSTP";
+
+    [DllImport("user32.dll", SetLastError = true)]
+    static extern bool DestroyIcon(IntPtr handle);
+
+    public MainForm(bool startInTray = false)
     {
+        startHidden = startInTray;
         try { Icon = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
         Text = "Open-SSTP for Windows"; MinimumSize = new Size(760, 650); Size = new Size(900, 760);
         BackColor = Color.FromArgb(13, 18, 28); ForeColor = Color.White; Font = new Font("Segoe UI", 10); StartPosition = FormStartPosition.CenterScreen;
         var root = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(24), ColumnCount = 1, RowCount = 4 };
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 74)); root.RowStyles.Add(new RowStyle(SizeType.Absolute, 270)); root.RowStyles.Add(new RowStyle(SizeType.Percent, 100)); root.RowStyles.Add(new RowStyle(SizeType.Absolute, 62));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 74)); root.RowStyles.Add(new RowStyle(SizeType.Absolute, 235)); root.RowStyles.Add(new RowStyle(SizeType.Percent, 100)); root.RowStyles.Add(new RowStyle(SizeType.Absolute, 62));
         Controls.Add(root);
         var title = new Label { Text = "Open-SSTP", Font = new Font("Segoe UI Semibold", 25), AutoSize = true, ForeColor = Color.White, Dock = DockStyle.Fill };
         root.Controls.Add(title, 0, 0);
@@ -52,7 +74,193 @@ public sealed class MainForm : Form
         timer.Tick += async (_, _) => await OnTimerTickAsync(); timer.Start();
         LoadRememberedData();
         rememberMe.CheckedChanged += (_, _) => { if (!rememberMe.Checked) RememberMeStore.Clear(); };
-        FormClosing += (_, _) => SaveRememberedData();
+
+        // Notification-area (system tray) icon. Windows may place it under the "^" / "Show hidden icons"
+        // flyout; the user can drag it onto the taskbar to keep it always visible.
+        BuildTrayIcons();
+        trayConnectionItem.Click += async (_, _) => await ToggleConnectionAsync();
+        trayAutoStartItem.Click += (_, _) => ToggleAutoStart();
+        trayMenu.Items.Add(trayStatusItem);
+        trayMenu.Items.Add(new ToolStripSeparator());
+        trayMenu.Items.Add(trayConnectionItem);
+        trayMenu.Items.Add("Open Open-SSTP", null, (_, _) => RestoreFromTray());
+        trayMenu.Items.Add(new ToolStripSeparator());
+        trayMenu.Items.Add(trayAutoStartItem);
+        trayMenu.Items.Add(new ToolStripSeparator());
+        trayMenu.Items.Add("Exit", null, async (_, _) => await ExitApplicationAsync());
+        trayMenu.Opening += (_, _) => { RefreshTrayMenu(); trayAutoStartItem.Checked = IsAutoStartEnabled(); };
+        trayConnectionItem.Font = new Font(trayConnectionItem.Font, FontStyle.Bold);
+        trayIcon.ContextMenuStrip = trayMenu;
+        trayIcon.Icon = trayIconIdle ?? SystemIcons.Application;
+        trayIcon.Text = "Open-SSTP — Not connected";
+        trayIcon.MouseClick += (_, e) => { if (e.Button == MouseButtons.Left) RestoreFromTray(); };
+        trayIcon.BalloonTipClicked += (_, _) => RestoreFromTray();
+        trayIcon.Visible = true;
+        trayReady = true;
+        RefreshTrayMenu();
+
+        // A second launch of the exe (or Start-menu shortcut) brings this instance back from the tray.
+        try
+        {
+            showEvent = new EventWaitHandle(false, EventResetMode.AutoReset, Program.ShowEventName);
+            showEventWait = ThreadPool.RegisterWaitForSingleObject(showEvent, (_, _) =>
+            {
+                try { if (!IsDisposed && IsHandleCreated) BeginInvoke(new Action(RestoreFromTray)); } catch { }
+            }, null, Timeout.Infinite, false);
+        }
+        catch { }
+
+        if (startHidden) ShowInTaskbar = false;
+        Resize += (_, _) => { if (WindowState == FormWindowState.Minimized) HideToTray(); };
+        FormClosing += (_, e) =>
+        {
+            SaveRememberedData();
+            bool systemClosing = e.CloseReason is CloseReason.WindowsShutDown or CloseReason.TaskManagerClosing or CloseReason.ApplicationExitCall;
+            if (!exitRequested && !systemClosing && trayReady)
+            {
+                e.Cancel = true;
+                HideToTray();
+                if (!trayHintShown)
+                {
+                    trayHintShown = true;
+                    trayIcon.ShowBalloonTip(3000, "Open-SSTP", "Still running in the system tray. Right-click the icon to connect, disconnect or exit.", ToolTipIcon.Info);
+                }
+            }
+            else
+            {
+                timer.Stop();
+                showEventWait?.Unregister(null);
+                showEvent?.Dispose();
+                trayIcon.Visible = false;
+                trayIcon.Dispose();
+                trayMenu.Dispose();
+                trayIconIdle?.Dispose(); trayIconBusy?.Dispose(); trayIconOn?.Dispose();
+            }
+        };
+    }
+
+    // When started with --tray (e.g. from "Start with Windows") the window stays hidden until the tray icon is used.
+    protected override void SetVisibleCore(bool value)
+    {
+        if (startHidden)
+        {
+            value = false;
+            if (!IsHandleCreated) CreateHandle();
+        }
+        base.SetVisibleCore(value);
+    }
+
+    void HideToTray()
+    {
+        ShowInTaskbar = false;
+        Hide();
+        trayIcon.Visible = true;
+        RefreshTrayMenu();
+    }
+
+    void RestoreFromTray()
+    {
+        startHidden = false;
+        ShowInTaskbar = true;
+        Show();
+        if (WindowState == FormWindowState.Minimized) WindowState = FormWindowState.Normal;
+        // Briefly toggling TopMost reliably brings the window forward even when Windows blocks plain Activate().
+        TopMost = true; TopMost = false;
+        Activate();
+    }
+
+    async Task ExitApplicationAsync()
+    {
+        if (exiting) return;
+        exiting = true;
+        try
+        {
+            // Leaving the app should not leave a VPN session running with no UI to stop it.
+            if (connected && engine is not null)
+            {
+                trayIcon.Text = "Open-SSTP — Disconnecting…";
+                try { await engine.DisconnectAsync(); } catch { }
+                connected = false;
+            }
+        }
+        finally
+        {
+            exitRequested = true;
+            trayReady = false;
+            Close();
+        }
+    }
+
+    void BuildTrayIcons()
+    {
+        Icon baseIcon = Icon ?? SystemIcons.Application;
+        trayIconIdle = MakeStatusIcon(baseIcon, null);
+        trayIconBusy = MakeStatusIcon(baseIcon, Color.FromArgb(255, 190, 60));
+        trayIconOn = MakeStatusIcon(baseIcon, Color.FromArgb(46, 204, 113));
+    }
+
+    // Draws the app icon with a small coloured status dot (none = idle, amber = busy, green = connected).
+    static Icon MakeStatusIcon(Icon baseIcon, Color? dot)
+    {
+        if (dot is null) return (Icon)baseIcon.Clone();
+        try
+        {
+            const int size = 32;
+            using var bmp = new Bitmap(size, size, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+            using (var g = Graphics.FromImage(bmp))
+            {
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                g.Clear(Color.Transparent);
+                g.DrawImage(baseIcon.ToBitmap(), new Rectangle(0, 0, size, size));
+                var r = new Rectangle(size - 15, size - 15, 14, 14);
+                using var ring = new SolidBrush(Color.White);
+                using var fill = new SolidBrush(dot.Value);
+                g.FillEllipse(ring, r);
+                g.FillEllipse(fill, Rectangle.Inflate(r, -2, -2));
+            }
+            IntPtr h = bmp.GetHicon();
+            try { return (Icon)System.Drawing.Icon.FromHandle(h).Clone(); }
+            finally { DestroyIcon(h); }
+        }
+        catch { return (Icon)baseIcon.Clone(); }
+    }
+
+    static bool IsAutoStartEnabled()
+    {
+        try { using var k = Registry.CurrentUser.OpenSubKey(AutoStartKey); return k?.GetValue(AutoStartValue) is string v && v.Length > 0; }
+        catch { return false; }
+    }
+
+    void ToggleAutoStart()
+    {
+        try
+        {
+            using var k = Registry.CurrentUser.CreateSubKey(AutoStartKey);
+            if (IsAutoStartEnabled()) k.DeleteValue(AutoStartValue, false);
+            else k.SetValue(AutoStartValue, "\"" + Application.ExecutablePath + "\" --tray");
+            trayAutoStartItem.Checked = IsAutoStartEnabled();
+        }
+        catch (Exception ex) { MessageBox.Show("Could not change the Start with Windows setting.\n\n" + ex.Message, "Open-SSTP", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
+    }
+
+    void RefreshTrayMenu()
+    {
+        if (!trayReady) return;
+        string status = connected ? "Connected" : connecting ? "Working…" : "Not connected";
+        trayStatusItem.Text = "Open-SSTP — " + status;
+        trayConnectionItem.Text = connected ? "Disconnect VPN" : connecting ? "Please wait…" : "Connect VPN";
+        trayConnectionItem.Enabled = !connecting;
+        trayIcon.Text = "Open-SSTP — " + status;
+        trayIcon.Icon = connected ? (trayIconOn ?? trayIconIdle ?? SystemIcons.Application)
+                      : connecting ? (trayIconBusy ?? trayIconIdle ?? SystemIcons.Application)
+                      : (trayIconIdle ?? SystemIcons.Application);
+    }
+
+    void NotifyTray(string message, ToolTipIcon icon = ToolTipIcon.Info)
+    {
+        // Balloons are only useful when the window is out of sight.
+        if (!Visible) trayIcon.ShowBalloonTip(2500, "Open-SSTP", message, icon);
     }
 
     async Task ToggleConnectionAsync()
@@ -60,7 +268,7 @@ public sealed class MainForm : Form
         if (connecting) return;
         if (connected)
         {
-            connecting = true; connectButton.Enabled = false; state.Text = "DISCONNECTING...";
+            connecting = true; connectButton.Enabled = false; state.Text = "DISCONNECTING..."; RefreshTrayMenu();
             try
             {
                 engine ??= new SoftEtherClientEngine();
@@ -68,13 +276,22 @@ public sealed class MainForm : Form
                 connected = false; ResetTraffic();
                 state.Text = "NOT CONNECTED"; state.ForeColor = Color.FromArgb(255, 190, 90);
                 note.Text = "Disconnected. VPN traffic graph is paused.";
+                NotifyTray("Disconnected");
             }
             catch (Exception ex) { MessageBox.Show(ex.Message, "Disconnect failed", MessageBoxButtons.OK, MessageBoxIcon.Error); }
-            finally { connecting = false; connectButton.Enabled = true; connectButton.Text = "Connect"; }
+            finally { connecting = false; connectButton.Enabled = true; connectButton.Text = connected ? "Disconnect" : "Connect"; RefreshTrayMenu(); }
             return;
         }
 
+        if (string.IsNullOrWhiteSpace(host.Text))
+        {
+            // Nothing to connect to yet (e.g. clicked "Connect" in the tray on first run): ask for the server.
+            RestoreFromTray(); host.Focus();
+            note.Text = "Enter a VPN Gate server first, then press Connect.";
+            return;
+        }
         connecting = true; connectButton.Enabled = false; state.Text = "CONNECTING..."; state.ForeColor = Color.FromArgb(255, 205, 130);
+        RefreshTrayMenu();
         note.Text = "Preparing the bundled SoftEther engine, then connecting to hub VPNGATE...";
         try
         {
@@ -88,9 +305,10 @@ public sealed class MainForm : Form
         {
             connected = false; ResetTraffic(); state.Text = "CONNECTION FAILED"; state.ForeColor = Color.FromArgb(255, 115, 115);
             note.Text = "SoftEther connection failed. See the error message.";
+            NotifyTray("Connection failed", ToolTipIcon.Error);
             MessageBox.Show(ex.Message, "VPN connection failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
-        finally { connecting = false; connectButton.Enabled = true; connectButton.Text = connected ? "Disconnect" : "Connect"; }
+        finally { connecting = false; connectButton.Enabled = true; connectButton.Text = connected ? "Disconnect" : "Connect"; RefreshTrayMenu(); }
     }
 
     async Task OnTimerTickAsync()
@@ -116,6 +334,7 @@ public sealed class MainForm : Form
                     note.Text = "Connected through SoftEther. Speed graph reads counters from the VPN adapter.";
                     connectButton.Text = "Disconnect";
                     ResetTraffic();
+                    NotifyTray("Connected");
                 }
                 else
                 {
@@ -132,7 +351,7 @@ public sealed class MainForm : Form
             connected = false; state.Text = "STATUS UNAVAILABLE"; state.ForeColor = Color.FromArgb(255, 190, 90);
             connectButton.Text = "Connect"; ResetTraffic();
         }
-        finally { polling = false; }
+        finally { polling = false; RefreshTrayMenu(); }
     }
 
     void UpdateVpnTraffic()
