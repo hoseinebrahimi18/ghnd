@@ -8,7 +8,7 @@ public sealed class MainForm : Form
     TextBox host = new() { PlaceholderText = "VPN Gate hostname or IP[:port]", Width = 280 };
     TextBox user = new() { PlaceholderText = "Username (VPN Gate: vpn)", Width = 280 };
     TextBox pass = new() { PlaceholderText = "Password (VPN Gate often blank)", Width = 280, UseSystemPasswordChar = true };
-    CheckBox rememberMe = new() { Text = "Remember me / مرا به خاطر بسپار", AutoSize = true, ForeColor = Color.FromArgb(220, 228, 240), BackColor = Color.Transparent, Margin = new Padding(0, 3, 0, 0) };
+    CheckBox rememberMe = new() { Text = "Remember me / مرا به خاطر بسپار", AutoSize = true, MinimumSize = new Size(300, 28), Height = 28, ForeColor = Color.FromArgb(220, 228, 240), BackColor = Color.Transparent, Margin = new Padding(0, 8, 0, 4), UseVisualStyleBackColor = false };
     Label state = new() { Text = "NOT CONNECTED", AutoSize = true, ForeColor = Color.FromArgb(255, 190, 90), Font = new Font("Segoe UI", 10, FontStyle.Bold) };
     Label rx = new() { Text = "↓ 0 KB/s", AutoSize = true, ForeColor = Color.White, Font = new Font("Segoe UI Semibold", 17) };
     Label tx = new() { Text = "↑ 0 KB/s", AutoSize = true, ForeColor = Color.White, Font = new Font("Segoe UI Semibold", 17) };
@@ -23,11 +23,6 @@ public sealed class MainForm : Form
     DateTime lastStatusPoll = DateTime.MinValue;
     string? lastAdapterId;
     long lastIn, lastOut;
-    readonly NotifyIcon trayIcon = new();
-    readonly ContextMenuStrip trayMenu = new();
-    ToolStripMenuItem trayConnectionItem = new("Connect VPN");
-    bool exitRequested;
-    bool trayReady;
 
     public MainForm()
     {
@@ -35,7 +30,7 @@ public sealed class MainForm : Form
         Text = "Open-SSTP for Windows"; MinimumSize = new Size(760, 650); Size = new Size(900, 760);
         BackColor = Color.FromArgb(13, 18, 28); ForeColor = Color.White; Font = new Font("Segoe UI", 10); StartPosition = FormStartPosition.CenterScreen;
         var root = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(24), ColumnCount = 1, RowCount = 4 };
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 74)); root.RowStyles.Add(new RowStyle(SizeType.Absolute, 235)); root.RowStyles.Add(new RowStyle(SizeType.Percent, 100)); root.RowStyles.Add(new RowStyle(SizeType.Absolute, 62));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 74)); root.RowStyles.Add(new RowStyle(SizeType.Absolute, 270)); root.RowStyles.Add(new RowStyle(SizeType.Percent, 100)); root.RowStyles.Add(new RowStyle(SizeType.Absolute, 62));
         Controls.Add(root);
         var title = new Label { Text = "Open-SSTP", Font = new Font("Segoe UI Semibold", 25), AutoSize = true, ForeColor = Color.White, Dock = DockStyle.Fill };
         root.Controls.Add(title, 0, 0);
@@ -57,67 +52,7 @@ public sealed class MainForm : Form
         timer.Tick += async (_, _) => await OnTimerTickAsync(); timer.Start();
         LoadRememberedData();
         rememberMe.CheckedChanged += (_, _) => { if (!rememberMe.Checked) RememberMeStore.Clear(); };
-
-        // Windows notification-area icon; Windows may place it under "Show hidden icons".
-        trayConnectionItem.Click += async (_, _) => await ToggleConnectionAsync();
-        trayMenu.Items.Add(trayConnectionItem);
-        trayMenu.Items.Add(new ToolStripSeparator());
-        trayMenu.Items.Add("Open Open-SSTP", null, (_, _) => RestoreFromTray());
-        trayMenu.Items.Add("Exit", null, (_, _) => ExitApplication());
-        trayIcon.Text = "Open-SSTP VPN";
-        try { trayIcon.Icon = Icon ?? System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath) ?? SystemIcons.Application; }
-        catch { trayIcon.Icon = SystemIcons.Application; }
-        trayIcon.ContextMenuStrip = trayMenu;
-        trayIcon.Visible = true;
-        trayIcon.DoubleClick += (_, _) => RestoreFromTray();
-        trayReady = true;
-        Resize += (_, _) => { if (WindowState == FormWindowState.Minimized) HideToTray(); };
-        FormClosing += (_, e) =>
-        {
-            SaveRememberedData();
-            if (!exitRequested && trayReady)
-            {
-                e.Cancel = true;
-                HideToTray();
-            }
-            else
-            {
-                trayIcon.Visible = false;
-                trayIcon.Dispose();
-                trayMenu.Dispose();
-                timer.Stop();
-            }
-        };
-    }
-
-    void HideToTray()
-    {
-        ShowInTaskbar = false;
-        Hide();
-        trayIcon.Visible = true;
-        RefreshTrayMenu();
-    }
-
-    void RestoreFromTray()
-    {
-        Show();
-        ShowInTaskbar = true;
-        WindowState = FormWindowState.Normal;
-        Activate();
-    }
-
-    void ExitApplication()
-    {
-        exitRequested = true;
-        trayReady = false;
-        Close();
-    }
-
-    void RefreshTrayMenu()
-    {
-        trayConnectionItem.Text = connected ? "Disconnect VPN" : connecting ? "Connecting…" : "Connect VPN";
-        trayConnectionItem.Enabled = !connecting;
-        trayIcon.Text = connected ? "Open-SSTP VPN — Connected" : "Open-SSTP VPN";
+        FormClosing += (_, _) => SaveRememberedData();
     }
 
     async Task ToggleConnectionAsync()
@@ -135,7 +70,7 @@ public sealed class MainForm : Form
                 note.Text = "Disconnected. VPN traffic graph is paused.";
             }
             catch (Exception ex) { MessageBox.Show(ex.Message, "Disconnect failed", MessageBoxButtons.OK, MessageBoxIcon.Error); }
-            finally { connecting = false; connectButton.Enabled = true; connectButton.Text = connected ? "Disconnect" : "Connect"; RefreshTrayMenu(); }
+            finally { connecting = false; connectButton.Enabled = true; connectButton.Text = "Connect"; }
             return;
         }
 
@@ -155,7 +90,7 @@ public sealed class MainForm : Form
             note.Text = "SoftEther connection failed. See the error message.";
             MessageBox.Show(ex.Message, "VPN connection failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
-        finally { connecting = false; connectButton.Enabled = true; connectButton.Text = connected ? "Disconnect" : "Connect"; RefreshTrayMenu(); }
+        finally { connecting = false; connectButton.Enabled = true; connectButton.Text = connected ? "Disconnect" : "Connect"; }
     }
 
     async Task OnTimerTickAsync()
@@ -197,7 +132,7 @@ public sealed class MainForm : Form
             connected = false; state.Text = "STATUS UNAVAILABLE"; state.ForeColor = Color.FromArgb(255, 190, 90);
             connectButton.Text = "Connect"; ResetTraffic();
         }
-        finally { polling = false; RefreshTrayMenu(); }
+        finally { polling = false; }
     }
 
     void UpdateVpnTraffic()
