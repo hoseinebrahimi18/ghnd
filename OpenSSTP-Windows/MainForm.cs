@@ -278,7 +278,7 @@ public sealed class MainForm : Form
                 note.Text = "Disconnected. VPN traffic graph is paused.";
                 NotifyTray("Disconnected");
             }
-            catch (Exception ex) { MessageBox.Show(ex.Message, "Disconnect failed", MessageBoxButtons.OK, MessageBoxIcon.Error); }
+            catch (Exception ex) { MessageBox.Show(DescribeError(ex), "Disconnect failed", MessageBoxButtons.OK, MessageBoxIcon.Error); }
             finally { connecting = false; connectButton.Enabled = true; connectButton.Text = connected ? "Disconnect" : "Connect"; RefreshTrayMenu(); }
             return;
         }
@@ -306,7 +306,7 @@ public sealed class MainForm : Form
             connected = false; ResetTraffic(); state.Text = "CONNECTION FAILED"; state.ForeColor = Color.FromArgb(255, 115, 115);
             note.Text = "SoftEther connection failed. See the error message.";
             NotifyTray("Connection failed", ToolTipIcon.Error);
-            MessageBox.Show(ex.Message, "VPN connection failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            MessageBox.Show(DescribeError(ex), "VPN connection failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
         finally { connecting = false; connectButton.Enabled = true; connectButton.Text = connected ? "Disconnect" : "Connect"; RefreshTrayMenu(); }
     }
@@ -405,6 +405,30 @@ public sealed class MainForm : Form
         var panel = new FlowLayoutPanel { Width = 330, Height = 54, FlowDirection = FlowDirection.TopDown, WrapContents = false, Margin = new Padding(0, 0, 0, 3) };
         panel.Controls.Add(new Label { Text = caption, AutoSize = true, ForeColor = Color.FromArgb(155, 170, 190), Font = new Font("Segoe UI", 8, FontStyle.Bold) });
         box.BackColor = Color.FromArgb(13, 18, 28); box.ForeColor = Color.White; box.BorderStyle = BorderStyle.FixedSingle; panel.Controls.Add(box); return panel;
+    }
+
+    // Builds a full, never-empty error text (type + message + inner errors + location) and saves it to
+    // %LocalAppData%\OpenSSTP\last-error.log so it can be copied or sent for diagnosis.
+    static string DescribeError(Exception ex)
+    {
+        var sb = new System.Text.StringBuilder();
+        for (Exception? e = ex; e is not null; e = e.InnerException)
+        {
+            sb.AppendLine(e.GetType().FullName + (string.IsNullOrWhiteSpace(e.Message) ? " (no message)" : ": " + e.Message.Trim()));
+            if (e is System.ComponentModel.Win32Exception w) sb.AppendLine("Win32 error code: " + w.NativeErrorCode);
+        }
+        var stack = (ex.StackTrace ?? string.Empty).Split('\n').Take(6);
+        sb.AppendLine().AppendLine("Where:").AppendLine(string.Join("\n", stack).Trim());
+        var text = sb.ToString().Trim();
+        try
+        {
+            var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OpenSSTP");
+            Directory.CreateDirectory(dir);
+            File.WriteAllText(Path.Combine(dir, "last-error.log"), DateTime.Now.ToString("u") + Environment.NewLine + text);
+            text += "\n\n(Saved to: " + Path.Combine(dir, "last-error.log") + ")";
+        }
+        catch { }
+        return text;
     }
 
     static string Fmt(long bytesPerSecond) => bytesPerSecond >= 1024 * 1024 ? $"{bytesPerSecond / 1024d / 1024:0.00} MB/s" : $"{bytesPerSecond / 1024d:0.0} KB/s";
