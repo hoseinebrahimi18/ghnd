@@ -10,7 +10,7 @@ public sealed class MainForm : Form
     TextBox host = new() { PlaceholderText = "VPN Gate hostname or IP[:port]", Width = 280 };
     TextBox user = new() { PlaceholderText = "Username (VPN Gate: vpn)", Width = 280 };
     TextBox pass = new() { PlaceholderText = "Password (VPN Gate often blank)", Width = 280, UseSystemPasswordChar = true };
-    CheckBox rememberMe = new() { Text = "Remember me / مرا به خاطر بسپار", AutoSize = true, ForeColor = Color.FromArgb(220, 228, 240), BackColor = Color.Transparent, Margin = new Padding(0, 3, 0, 0) };
+    CheckBox rememberMe = new() { Text = "Remember me  |  مرا به خاطر بسپار", AutoSize = true, MinimumSize = new Size(0, 28), ForeColor = Color.FromArgb(220, 228, 240), BackColor = Color.Transparent, Margin = new Padding(0, 8, 0, 4) };
     Label state = new() { Text = "NOT CONNECTED", AutoSize = true, ForeColor = Color.FromArgb(255, 190, 90), Font = new Font("Segoe UI", 10, FontStyle.Bold) };
     Label rx = new() { Text = "↓ 0 KB/s", AutoSize = true, ForeColor = Color.White, Font = new Font("Segoe UI Semibold", 17) };
     Label tx = new() { Text = "↑ 0 KB/s", AutoSize = true, ForeColor = Color.White, Font = new Font("Segoe UI Semibold", 17) };
@@ -49,10 +49,10 @@ public sealed class MainForm : Form
     {
         startHidden = startInTray;
         try { Icon = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
-        Text = "Open-SSTP for Windows"; MinimumSize = new Size(760, 650); Size = new Size(900, 760);
+        Text = "Open-SSTP for Windows"; MinimumSize = new Size(760, 700); Size = new Size(900, 800);
         BackColor = Color.FromArgb(13, 18, 28); ForeColor = Color.White; Font = new Font("Segoe UI", 10); StartPosition = FormStartPosition.CenterScreen;
         var root = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(24), ColumnCount = 1, RowCount = 4 };
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 74)); root.RowStyles.Add(new RowStyle(SizeType.Absolute, 235)); root.RowStyles.Add(new RowStyle(SizeType.Percent, 100)); root.RowStyles.Add(new RowStyle(SizeType.Absolute, 62));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 74)); root.RowStyles.Add(new RowStyle(SizeType.Absolute, 275)); root.RowStyles.Add(new RowStyle(SizeType.Percent, 100)); root.RowStyles.Add(new RowStyle(SizeType.Absolute, 62));
         Controls.Add(root);
         var title = new Label { Text = "Open-SSTP", Font = new Font("Segoe UI Semibold", 25), AutoSize = true, ForeColor = Color.White, Dock = DockStyle.Fill };
         root.Controls.Add(title, 0, 0);
