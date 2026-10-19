@@ -10,14 +10,16 @@ public sealed class MainForm : Form
     TextBox host = new() { PlaceholderText = "VPN Gate hostname or IP[:port]", Width = 280 };
     TextBox user = new() { PlaceholderText = "Username (VPN Gate: vpn)", Width = 280 };
     TextBox pass = new() { PlaceholderText = "Password (VPN Gate often blank)", Width = 280, UseSystemPasswordChar = true };
-    CheckBox rememberMe = new() { Text = "Remember me  |  مرا به خاطر بسپار", AutoSize = true, MinimumSize = new Size(0, 28), ForeColor = Color.FromArgb(220, 228, 240), BackColor = Color.Transparent, Margin = new Padding(0, 8, 0, 4) };
-    Label state = new() { Text = "NOT CONNECTED", AutoSize = true, ForeColor = Color.FromArgb(255, 190, 90), Font = new Font("Segoe UI", 10, FontStyle.Bold) };
-    Label rx = new() { Text = "↓ 0 KB/s", AutoSize = true, ForeColor = Color.White, Font = new Font("Segoe UI Semibold", 17) };
-    Label tx = new() { Text = "↑ 0 KB/s", AutoSize = true, ForeColor = Color.White, Font = new Font("Segoe UI Semibold", 17) };
-    Label note = new() { AutoSize = false, Height = 52, Dock = DockStyle.Bottom, ForeColor = Color.FromArgb(255, 205, 130), TextAlign = ContentAlignment.MiddleLeft };
-    TrafficChart chart = new() { Dock = DockStyle.Fill, BackColor = Color.FromArgb(19, 25, 36) };
+    ToggleSwitch rememberMe = new() { Margin = Padding.Empty };
+    StatusPill state = new() { Text = "NOT CONNECTED", ForeColor = Pal.Idle };
+    SpeedCell rx = new(IconKind.ArrowDown, Pal.Green, "DOWNLOAD");
+    SpeedCell tx = new(IconKind.ArrowUp, Pal.AccentSoft, "UPLOAD");
+    PowerOrb orb = new();
+    Label heroHint = new() { AutoSize = false, Height = 22, ForeColor = Pal.Muted, BackColor = Color.Transparent, TextAlign = ContentAlignment.MiddleCenter, Font = new Font("Segoe UI", 9) };
+    Label note = new() { AutoSize = false, Dock = DockStyle.Fill, ForeColor = Pal.Muted, BackColor = Color.Transparent, TextAlign = ContentAlignment.TopLeft, Font = new Font("Segoe UI", 9), Margin = new Padding(2, 12, 2, 0) };
+    TrafficChart chart = new() { Dock = DockStyle.Fill, Margin = Padding.Empty };
     System.Windows.Forms.Timer timer = new() { Interval = 1000 };
-    Button connectButton = new() { Text = "Connect", Width = 170, Height = 42, FlatStyle = FlatStyle.Flat, BackColor = Color.FromArgb(46, 119, 235), ForeColor = Color.White, Margin = new Padding(0, 14, 0, 0) };
+    GradientButton connectButton = new() { Text = "Connect", Dock = DockStyle.Fill, Margin = new Padding(0, 10, 0, 0) };
     SoftEtherClientEngine? engine;
     bool connected;
     bool connecting;
@@ -49,28 +51,63 @@ public sealed class MainForm : Form
     {
         startHidden = startInTray;
         try { Icon = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
-        Text = "Open-SSTP for Windows"; MinimumSize = new Size(760, 700); Size = new Size(900, 800);
-        BackColor = Color.FromArgb(13, 18, 28); ForeColor = Color.White; Font = new Font("Segoe UI", 10); StartPosition = FormStartPosition.CenterScreen;
-        var root = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(24), ColumnCount = 1, RowCount = 4 };
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 74)); root.RowStyles.Add(new RowStyle(SizeType.Absolute, 275)); root.RowStyles.Add(new RowStyle(SizeType.Percent, 100)); root.RowStyles.Add(new RowStyle(SizeType.Absolute, 62));
+        Text = "Open-SSTP for Windows"; MinimumSize = new Size(940, 740); Size = new Size(1040, 800);
+        BackColor = Pal.BG0; ForeColor = Pal.Text; Font = new Font("Segoe UI", 10); StartPosition = FormStartPosition.CenterScreen; DoubleBuffered = true;
+
+        var root = new BufferedTable { Dock = DockStyle.Fill, Padding = new Padding(28, 18, 28, 24), ColumnCount = 1, RowCount = 2 };
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 76)); root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         Controls.Add(root);
-        var title = new Label { Text = "Open-SSTP", Font = new Font("Segoe UI Semibold", 25), AutoSize = true, ForeColor = Color.White, Dock = DockStyle.Fill };
-        root.Controls.Add(title, 0, 0);
-        var details = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, BackColor = Color.FromArgb(24, 32, 46), Padding = new Padding(18) };
-        details.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 56)); details.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 44));
-        var fields = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false };
-        fields.Controls.Add(MakeField("SERVER / HOST (optionally :port)", host)); fields.Controls.Add(MakeField("USERNAME", user)); fields.Controls.Add(MakeField("PASSWORD", pass));
-        fields.Controls.Add(rememberMe);
-        details.Controls.Add(fields, 0, 0);
-        var statusPanel = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, Padding = new Padding(12, 4, 0, 0), WrapContents = false };
-        statusPanel.Controls.Add(new Label { Text = "CONNECTION STATUS", AutoSize = true, ForeColor = Color.FromArgb(155, 170, 190) }); statusPanel.Controls.Add(state);
-        connectButton.FlatAppearance.BorderSize = 0; connectButton.Click += async (_, _) => await ToggleConnectionAsync(); statusPanel.Controls.Add(connectButton);
-        details.Controls.Add(statusPanel, 1, 0); root.Controls.Add(details, 0, 1);
-        var graphPanel = new TableLayoutPanel { Dock = DockStyle.Fill, RowCount = 2, ColumnCount = 1, Padding = new Padding(0, 18, 0, 0) };
-        graphPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 48)); graphPanel.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        var metrics = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.LeftToRight };
-        metrics.Controls.Add(rx); metrics.Controls.Add(new Label { Width = 28 }); metrics.Controls.Add(tx); graphPanel.Controls.Add(metrics, 0, 0); graphPanel.Controls.Add(chart, 0, 1); root.Controls.Add(graphPanel, 0, 2);
-        note.Text = "Built-in SoftEther engine. First connection may request Administrator permission to register the engine service and VPN adapter. Graph measures VPN adapter traffic only."; root.Controls.Add(note, 0, 3);
+        root.Controls.Add(new HeaderBar { Dock = DockStyle.Fill, Margin = new Padding(0, 0, 0, 10) }, 0, 0);
+
+        var body = new BufferedTable { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1 };
+        body.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 57)); body.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 43));
+        body.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        root.Controls.Add(body, 0, 1);
+
+        // ── Left column: hero orb, live speed, traffic graph ──
+        var left = new BufferedTable { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3, Margin = new Padding(0, 0, 10, 0) };
+        left.RowStyles.Add(new RowStyle(SizeType.Absolute, 310)); left.RowStyles.Add(new RowStyle(SizeType.Absolute, 104)); left.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        body.Controls.Add(left, 0, 0);
+
+        var hero = new Card { Dock = DockStyle.Fill, Margin = new Padding(0, 0, 0, 14), Fill = Pal.A(Pal.CardColor, 175), Radius = 26f };
+        hero.Controls.Add(orb); hero.Controls.Add(state); hero.Controls.Add(heroHint);
+        hero.Resize += (_, _) => LayoutHero(hero);
+        state.SizeChanged += (_, _) => LayoutHero(hero);
+        orb.Click += async (_, _) => await ToggleConnectionAsync();
+        heroHint.Text = "Click the power button to connect";
+        left.Controls.Add(hero, 0, 0);
+
+        var speedCard = new Card { Dock = DockStyle.Fill, Margin = new Padding(0, 0, 0, 14), Padding = new Padding(8, 10, 8, 10) };
+        var speedRow = new BufferedTable { Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 1 };
+        speedRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50)); speedRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 1)); speedRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        speedRow.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        rx.Dock = DockStyle.Fill; tx.Dock = DockStyle.Fill; rx.Margin = Padding.Empty; tx.Margin = Padding.Empty;
+        speedRow.Controls.Add(rx, 0, 0);
+        speedRow.Controls.Add(new Panel { BackColor = Pal.Stroke, Dock = DockStyle.Fill, Margin = new Padding(0, 14, 0, 14) }, 1, 0);
+        speedRow.Controls.Add(tx, 2, 0);
+        speedCard.Controls.Add(speedRow);
+        left.Controls.Add(speedCard, 0, 1);
+
+        left.Controls.Add(chart, 0, 2);
+
+        // ── Right column: connection form ──
+        var formCard = new Card { Dock = DockStyle.Fill, Margin = new Padding(10, 0, 0, 0), Padding = new Padding(24, 22, 24, 22), Radius = 26f };
+        var form = new BufferedTable { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 7 };
+        form.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        foreach (int h in new[] { 40, 84, 84, 84, 58, 66 }) form.RowStyles.Add(new RowStyle(SizeType.Absolute, h));
+        form.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        form.Controls.Add(new SectionLabel("Connection details", "اطلاعات اتصال") { Dock = DockStyle.Fill, Margin = Padding.Empty }, 0, 0);
+        form.Controls.Add(MakeField("SERVER / HOST (optionally :port)", host, IconKind.Server), 0, 1);
+        form.Controls.Add(MakeField("USERNAME", user, IconKind.User), 0, 2);
+        form.Controls.Add(MakeField("PASSWORD", pass, IconKind.Lock), 0, 3);
+        rememberMe.Dock = DockStyle.Fill; form.Controls.Add(rememberMe, 0, 4);
+        connectButton.Click += async (_, _) => await ToggleConnectionAsync();
+        form.Controls.Add(connectButton, 0, 5);
+        note.Text = "Built-in SoftEther engine. The first connection may ask for Administrator permission to register the engine service and VPN adapter. The graph measures VPN adapter traffic only.";
+        form.Controls.Add(note, 0, 6);
+        formCard.Controls.Add(form);
+        body.Controls.Add(formCard, 1, 0);
+
         timer.Tick += async (_, _) => await OnTimerTickAsync(); timer.Start();
         LoadRememberedData();
         rememberMe.CheckedChanged += (_, _) => { if (!rememberMe.Checked) RememberMeStore.Clear(); };
@@ -195,8 +232,8 @@ public sealed class MainForm : Form
     {
         Icon baseIcon = Icon ?? SystemIcons.Application;
         trayIconIdle = MakeStatusIcon(baseIcon, null);
-        trayIconBusy = MakeStatusIcon(baseIcon, Color.FromArgb(255, 190, 60));
-        trayIconOn = MakeStatusIcon(baseIcon, Color.FromArgb(46, 204, 113));
+        trayIconBusy = MakeStatusIcon(baseIcon, Pal.Amber);
+        trayIconOn = MakeStatusIcon(baseIcon, Pal.Green);
     }
 
     // Draws the app icon with a small coloured status dot (none = idle, amber = busy, green = connected).
@@ -246,6 +283,8 @@ public sealed class MainForm : Form
 
     void RefreshTrayMenu()
     {
+        orb.Mode = connected ? OrbMode.On : connecting ? OrbMode.Busy : OrbMode.Idle;
+        heroHint.Text = connected ? "Tunnel active · click to disconnect" : connecting ? "Please wait…" : "Click the power button to connect";
         if (!trayReady) return;
         string status = connected ? "Connected" : connecting ? "Working…" : "Not connected";
         trayStatusItem.Text = "Open-SSTP — " + status;
@@ -274,7 +313,7 @@ public sealed class MainForm : Form
                 engine ??= new SoftEtherClientEngine();
                 await engine.DisconnectAsync();
                 connected = false; ResetTraffic();
-                state.Text = "NOT CONNECTED"; state.ForeColor = Color.FromArgb(255, 190, 90);
+                state.Text = "NOT CONNECTED"; state.ForeColor = Pal.Idle;
                 note.Text = "Disconnected. VPN traffic graph is paused.";
                 NotifyTray("Disconnected");
             }
@@ -290,7 +329,7 @@ public sealed class MainForm : Form
             note.Text = "Enter a VPN Gate server first, then press Connect.";
             return;
         }
-        connecting = true; connectButton.Enabled = false; state.Text = "CONNECTING..."; state.ForeColor = Color.FromArgb(255, 205, 130);
+        connecting = true; connectButton.Enabled = false; state.Text = "CONNECTING..."; state.ForeColor = Pal.Amber;
         RefreshTrayMenu();
         note.Text = "Preparing the bundled SoftEther engine, then connecting to hub VPNGATE...";
         try
@@ -303,7 +342,7 @@ public sealed class MainForm : Form
         }
         catch (Exception ex)
         {
-            connected = false; ResetTraffic(); state.Text = "CONNECTION FAILED"; state.ForeColor = Color.FromArgb(255, 115, 115);
+            connected = false; ResetTraffic(); state.Text = "CONNECTION FAILED"; state.ForeColor = Pal.Red;
             note.Text = "SoftEther connection failed. See the error message.";
             NotifyTray("Connection failed", ToolTipIcon.Error);
             MessageBox.Show(DescribeError(ex), "VPN connection failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
@@ -330,7 +369,7 @@ public sealed class MainForm : Form
                 connected = nowConnected;
                 if (connected)
                 {
-                    state.Text = "CONNECTED"; state.ForeColor = Color.FromArgb(63, 220, 164);
+                    state.Text = "CONNECTED"; state.ForeColor = Pal.Green;
                     note.Text = "Connected through SoftEther. Speed graph reads counters from the VPN adapter.";
                     connectButton.Text = "Disconnect";
                     ResetTraffic();
@@ -338,7 +377,7 @@ public sealed class MainForm : Form
                 }
                 else
                 {
-                    state.Text = "NOT CONNECTED"; state.ForeColor = Color.FromArgb(255, 190, 90);
+                    state.Text = "NOT CONNECTED"; state.ForeColor = Pal.Idle;
                     note.Text = "SoftEther reports no active session. VPN speed is shown as zero.";
                     connectButton.Text = "Connect";
                     ResetTraffic();
@@ -348,7 +387,7 @@ public sealed class MainForm : Form
         catch
         {
             // A temporary status-query failure must not fabricate a connected state or traffic.
-            connected = false; state.Text = "STATUS UNAVAILABLE"; state.ForeColor = Color.FromArgb(255, 190, 90);
+            connected = false; state.Text = "STATUS UNAVAILABLE"; state.ForeColor = Pal.Idle;
             connectButton.Text = "Connect"; ResetTraffic();
         }
         finally { polling = false; RefreshTrayMenu(); }
@@ -356,11 +395,11 @@ public sealed class MainForm : Form
 
     void UpdateVpnTraffic()
     {
-        if (!connected) { rx.Text = "↓ 0 KB/s"; tx.Text = "↑ 0 KB/s"; chart.Caption = "VPN traffic (idle until SoftEther reports connected)"; chart.Add(0, 0); return; }
+        if (!connected) { rx.Text = "0.0 KB/s"; tx.Text = "0.0 KB/s"; chart.Caption = "Live traffic · idle"; chart.Add(0, 0); return; }
         var nic = SoftEtherClientEngine.FindVpnInterface();
         if (nic is null)
         {
-            rx.Text = "↓ 0 KB/s"; tx.Text = "↑ 0 KB/s"; chart.Caption = "Connected session reported; VPN adapter counters unavailable"; chart.Add(0, 0); return;
+            rx.Text = "0.0 KB/s"; tx.Text = "0.0 KB/s"; chart.Caption = "Live traffic · adapter counters unavailable"; chart.Add(0, 0); return;
         }
         try
         {
@@ -368,19 +407,19 @@ public sealed class MainForm : Form
             if (!string.Equals(lastAdapterId, nic.Id, StringComparison.Ordinal))
             {
                 lastAdapterId = nic.Id; lastIn = stats.BytesReceived; lastOut = stats.BytesSent;
-                rx.Text = "↓ 0 KB/s"; tx.Text = "↑ 0 KB/s"; chart.Add(0, 0); return;
+                rx.Text = "0.0 KB/s"; tx.Text = "0.0 KB/s"; chart.Add(0, 0); return;
             }
             long inNow = stats.BytesReceived, outNow = stats.BytesSent;
             long down = Math.Max(0, inNow - lastIn), up = Math.Max(0, outNow - lastOut);
             lastIn = inNow; lastOut = outNow;
-            rx.Text = "↓ " + Fmt(down); tx.Text = "↑ " + Fmt(up); chart.Caption = "Measured SoftEther VPN adapter traffic (bytes per second)"; chart.Add(down, up);
+            rx.Text = Fmt(down); tx.Text = Fmt(up); chart.Caption = "Live traffic · VPN adapter"; chart.Add(down, up);
         }
-        catch { rx.Text = "↓ 0 KB/s"; tx.Text = "↑ 0 KB/s"; chart.Add(0, 0); }
+        catch { rx.Text = "0.0 KB/s"; tx.Text = "0.0 KB/s"; chart.Add(0, 0); }
     }
 
     void ResetTraffic()
     {
-        lastAdapterId = null; lastIn = 0; lastOut = 0; rx.Text = "↓ 0 KB/s"; tx.Text = "↑ 0 KB/s"; chart.ClearSamples();
+        lastAdapterId = null; lastIn = 0; lastOut = 0; rx.Text = "0.0 KB/s"; tx.Text = "0.0 KB/s"; chart.ClearSamples();
     }
 
     void LoadRememberedData()
@@ -400,11 +439,40 @@ public sealed class MainForm : Form
         catch (Exception ex) { MessageBox.Show("Could not save the login information securely. The password was not saved.\n\n" + ex.Message, "Remember me", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
     }
 
-    Control MakeField(string caption, TextBox box)
+    static Control MakeField(string caption, TextBox box, IconKind icon) => new FieldBox(caption, icon, box) { Dock = DockStyle.Fill, Margin = Padding.Empty };
+
+    void LayoutHero(Control hero)
     {
-        var panel = new FlowLayoutPanel { Width = 330, Height = 54, FlowDirection = FlowDirection.TopDown, WrapContents = false, Margin = new Padding(0, 0, 0, 3) };
-        panel.Controls.Add(new Label { Text = caption, AutoSize = true, ForeColor = Color.FromArgb(155, 170, 190), Font = new Font("Segoe UI", 8, FontStyle.Bold) });
-        box.BackColor = Color.FromArgb(13, 18, 28); box.ForeColor = Color.White; box.BorderStyle = BorderStyle.FixedSingle; panel.Controls.Add(box); return panel;
+        int w = hero.ClientSize.Width, h = hero.ClientSize.Height;
+        if (w <= 0 || h <= 0) return;
+        int size = Math.Max(120, Math.Min(220, h - 98));
+        orb.Size = new Size(size, size);
+        orb.Location = new Point((w - size) / 2, 12);
+        state.Location = new Point((w - state.Width) / 2, orb.Bottom + 4);
+        heroHint.SetBounds(16, state.Bottom + 8, Math.Max(40, w - 32), 22);
+    }
+
+    protected override void OnPaintBackground(PaintEventArgs e)
+    {
+        var g = e.Graphics; var r = ClientRectangle;
+        if (r.Width <= 0 || r.Height <= 0) return;
+        using (var br = new LinearGradientBrush(r, Pal.BG0, Pal.BG1, 90f)) g.FillRectangle(br, r);
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        // faint accent glows in the corners
+        using (var gp = new GraphicsPath())
+        {
+            float rad = Math.Max(r.Width, r.Height) * 0.55f;
+            gp.AddEllipse(r.Right - rad * 0.8f, r.Top - rad * 0.7f, rad * 1.6f, rad * 1.4f);
+            using var pb = new PathGradientBrush(gp) { CenterColor = Pal.A(Pal.Accent2, 34), SurroundColors = new[] { Pal.A(Pal.Accent2, 0) } };
+            g.FillPath(pb, gp);
+        }
+        using (var gp = new GraphicsPath())
+        {
+            float rad = Math.Max(r.Width, r.Height) * 0.5f;
+            gp.AddEllipse(r.Left - rad * 0.8f, r.Bottom - rad * 0.7f, rad * 1.6f, rad * 1.4f);
+            using var pb = new PathGradientBrush(gp) { CenterColor = Pal.A(Pal.Accent, 26), SurroundColors = new[] { Pal.A(Pal.Accent, 0) } };
+            g.FillPath(pb, gp);
+        }
     }
 
     // Builds a full, never-empty error text (type + message + inner errors + location) and saves it to
@@ -432,26 +500,4 @@ public sealed class MainForm : Form
     }
 
     static string Fmt(long bytesPerSecond) => bytesPerSecond >= 1024 * 1024 ? $"{bytesPerSecond / 1024d / 1024:0.00} MB/s" : $"{bytesPerSecond / 1024d:0.0} KB/s";
-}
-
-public sealed class TrafficChart : Control
-{
-    readonly Queue<double> incoming = new(), outgoing = new();
-    public string Caption { get; set; } = "Measured VPN adapter traffic";
-    public TrafficChart() { DoubleBuffered = true; SetStyle(ControlStyles.ResizeRedraw, true); }
-    public void Add(long rx, long tx) { incoming.Enqueue(rx / 1024d); outgoing.Enqueue(tx / 1024d); while (incoming.Count > 90) incoming.Dequeue(); while (outgoing.Count > 90) outgoing.Dequeue(); Invalidate(); }
-    public void ClearSamples() { incoming.Clear(); outgoing.Clear(); Add(0, 0); }
-    protected override void OnPaint(PaintEventArgs e)
-    {
-        base.OnPaint(e); e.Graphics.SmoothingMode = SmoothingMode.AntiAlias; e.Graphics.Clear(BackColor);
-        using var grid = new Pen(Color.FromArgb(42, 55, 73)); for (int i = 1; i < 5; i++) e.Graphics.DrawLine(grid, 0, Height * i / 5, Width, Height * i / 5);
-        Draw(incoming, Color.FromArgb(72, 170, 255), e.Graphics); Draw(outgoing, Color.FromArgb(63, 220, 164), e.Graphics);
-        using var font = new Font("Segoe UI", 8); using var brush = new SolidBrush(Color.FromArgb(155, 170, 190)); e.Graphics.DrawString(Caption, font, brush, 8, 8);
-    }
-    void Draw(IEnumerable<double> vals, Color color, Graphics g)
-    {
-        var a = vals.ToArray(); if (a.Length < 2) return; double max = Math.Max(10, a.Max()) * 1.15;
-        var pts = a.Select((v, i) => new PointF(i * (Width - 2f) / Math.Max(1, a.Length - 1), Height - 8 - (float)(v / max * (Height - 24)))).ToArray();
-        using var pen = new Pen(color, 2.2f); g.DrawLines(pen, pts);
-    }
 }
