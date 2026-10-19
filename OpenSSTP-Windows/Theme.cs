@@ -29,6 +29,17 @@ public static class Pal
     public static readonly Color Amber = H("#FFBE5A");
     public static readonly Color CoreTop = H("#1E2B49");
     public static readonly Color CoreBottom = H("#0E1626");
+    public static readonly Color Drawer = H("#0A111F");
+
+    /// <summary>Gradient pairs used for the round avatars of saved configs.</summary>
+    public static readonly Color[][] Avatars =
+    {
+        new[] { Accent, Accent2 },
+        new[] { Green, Cyan },
+        new[] { Amber, DangerB },
+        new[] { Accent2, DangerA },
+        new[] { Cyan, Accent },
+    };
 
     public static Color A(Color c, int alpha) => Color.FromArgb(Math.Clamp(alpha, 0, 255), c.R, c.G, c.B);
 
@@ -72,9 +83,22 @@ public static class Pal
         };
         g.DrawString(s, f, br, r, sf);
     }
+
+    /// <summary>Draws a (pure) Persian line with right-to-left layout. toRight = false keeps it on the left edge.</summary>
+    public static void DrawFa(Graphics g, string s, Font f, Color c, RectangleF r, bool toRight = false)
+    {
+        using var br = new SolidBrush(c);
+        using var sf = new StringFormat(StringFormatFlags.NoWrap | StringFormatFlags.DirectionRightToLeft)
+        {
+            Alignment = toRight ? StringAlignment.Near : StringAlignment.Far,
+            LineAlignment = StringAlignment.Center,
+            Trimming = StringTrimming.EllipsisCharacter
+        };
+        g.DrawString(s, f, br, r, sf);
+    }
 }
 
-public enum IconKind { Shield, ArrowDown, ArrowUp, Server, User, Lock, Power }
+public enum IconKind { Shield, ArrowDown, ArrowUp, Server, User, Lock, Power, Menu, Close, Plus, Save, Edit, Trash, Gear, Info, Folder, Import, Export, Exit, Bolt, Star, StarFill, Doc, Check, Chevron }
 
 /// <summary>Vector icons drawn with GDI+ (24x24 design grid), same set as the Android app.</summary>
 public static class Icons
@@ -139,6 +163,104 @@ public static class Icons
                 g.DrawArc(pen, R(4, 4, 16, 16), 310, 280);
                 g.DrawLine(pen, P(12, 3), P(12, 12));
                 break;
+            case IconKind.Menu:
+                g.DrawLine(pen, P(4, 6.5f), P(20, 6.5f));
+                g.DrawLine(pen, P(4, 12), P(20, 12));
+                g.DrawLine(pen, P(4, 17.5f), P(20, 17.5f));
+                break;
+            case IconKind.Close:
+                g.DrawLine(pen, P(6, 6), P(18, 18));
+                g.DrawLine(pen, P(18, 6), P(6, 18));
+                break;
+            case IconKind.Plus:
+                g.DrawLine(pen, P(12, 5), P(12, 19));
+                g.DrawLine(pen, P(5, 12), P(19, 12));
+                break;
+            case IconKind.Save:
+            {
+                using var saveBody = Pal.Round(R(4, 4, 16, 16), 2.5f * r.Width / 24f);
+                g.DrawPath(pen, saveBody);
+                g.DrawPolygon(pen, new[] { P(8, 4), P(8, 9), P(15, 9), P(15, 4) });
+                g.DrawPolygon(pen, new[] { P(7.5f, 20), P(7.5f, 14), P(16.5f, 14), P(16.5f, 20) });
+                break;
+            }
+            case IconKind.Edit:
+                g.DrawPolygon(pen, new[] { P(4, 20), P(5, 15.5f), P(15.5f, 5), P(19, 8.5f), P(8.5f, 19) });
+                break;
+            case IconKind.Trash:
+                g.DrawLine(pen, P(4.5f, 7), P(19.5f, 7));
+                g.DrawLines(pen, new[] { P(9, 7), P(9, 4.5f), P(15, 4.5f), P(15, 7) });
+                g.DrawLines(pen, new[] { P(6.5f, 7), P(7.5f, 20), P(16.5f, 20), P(17.5f, 7) });
+                g.DrawLine(pen, P(10, 11), P(10, 16));
+                g.DrawLine(pen, P(14, 11), P(14, 16));
+                break;
+            case IconKind.Gear:
+            {
+                for (int k = 0; k < 8; k++)
+                {
+                    double ang = k * Math.PI / 4.0;
+                    float cs = (float)Math.Cos(ang), sn = (float)Math.Sin(ang);
+                    g.DrawLine(pen, P(12 + cs * 7.2f, 12 + sn * 7.2f), P(12 + cs * 9.6f, 12 + sn * 9.6f));
+                }
+                g.DrawEllipse(pen, R(5.5f, 5.5f, 13, 13));
+                g.DrawEllipse(pen, R(9.5f, 9.5f, 5, 5));
+                break;
+            }
+            case IconKind.Info:
+                g.DrawEllipse(pen, R(3, 3, 18, 18));
+                g.DrawLine(pen, P(12, 11), P(12, 17));
+                g.FillEllipse(brush, R(11, 6.6f, 2, 2));
+                break;
+            case IconKind.Folder:
+                g.DrawPolygon(pen, new[] { P(3, 6), P(9, 6), P(11.5f, 8.5f), P(21, 8.5f), P(21, 19), P(3, 19) });
+                break;
+            case IconKind.Import:
+                g.DrawLines(pen, new[] { P(4, 15), P(4, 20), P(20, 20), P(20, 15) });
+                g.DrawLine(pen, P(12, 4), P(12, 15));
+                g.DrawLines(pen, new[] { P(7.5f, 10.5f), P(12, 15), P(16.5f, 10.5f) });
+                break;
+            case IconKind.Export:
+                g.DrawLines(pen, new[] { P(4, 15), P(4, 20), P(20, 20), P(20, 15) });
+                g.DrawLine(pen, P(12, 15), P(12, 4));
+                g.DrawLines(pen, new[] { P(7.5f, 8.5f), P(12, 4), P(16.5f, 8.5f) });
+                break;
+            case IconKind.Exit:
+                g.DrawLines(pen, new[] { P(10, 4), P(5, 4), P(5, 20), P(10, 20) });
+                g.DrawLine(pen, P(9, 12), P(20, 12));
+                g.DrawLines(pen, new[] { P(16, 8), P(20, 12), P(16, 16) });
+                break;
+            case IconKind.Bolt:
+                g.DrawPolygon(pen, new[] { P(13, 3), P(5, 13.5f), P(11, 13.5f), P(10, 21), P(19, 10), P(13, 10) });
+                break;
+            case IconKind.Star:
+            case IconKind.StarFill:
+            {
+                var starPts = new PointF[10];
+                for (int k = 0; k < 10; k++)
+                {
+                    double ang = -Math.PI / 2.0 + k * Math.PI / 5.0;
+                    float rad = (k % 2 == 0) ? 9f : 4f;
+                    starPts[k] = P(12 + (float)Math.Cos(ang) * rad, 12.8f + (float)Math.Sin(ang) * rad);
+                }
+                if (kind == IconKind.StarFill) g.FillPolygon(brush, starPts);
+                g.DrawPolygon(pen, starPts);
+                break;
+            }
+            case IconKind.Doc:
+            {
+                using var docBody = Pal.Round(R(5, 3, 14, 18), 2.5f * r.Width / 24f);
+                g.DrawPath(pen, docBody);
+                g.DrawLine(pen, P(8.5f, 9), P(15.5f, 9));
+                g.DrawLine(pen, P(8.5f, 13), P(15.5f, 13));
+                g.DrawLine(pen, P(8.5f, 17), P(12.5f, 17));
+                break;
+            }
+            case IconKind.Check:
+                g.DrawLines(pen, new[] { P(5, 12.5f), P(10, 17.5f), P(19, 7) });
+                break;
+            case IconKind.Chevron:
+                g.DrawLines(pen, new[] { P(9, 5), P(16, 12), P(9, 19) });
+                break;
         }
         g.SmoothingMode = old;
     }
@@ -184,17 +306,38 @@ public sealed class BufferedTable : TableLayoutPanel
     }
 }
 
-/// <summary>Logo + app name at the top of the window.</summary>
+/// <summary>Hamburger button + logo + app name at the top of the window, with the active-config chip on the right.</summary>
 public sealed class HeaderBar : Control
 {
     readonly Font title = new("Segoe UI Semibold", 21f);
     readonly Font sub = new("Segoe UI", 8f, FontStyle.Bold);
+    readonly Font chipFont = new("Segoe UI Semibold", 9.5f);
+    string? profileName;
+    const int LogoX = 60;
+
+    /// <summary>The hamburger button that opens the side menu.</summary>
+    public HamburgerButton Burger { get; } = new();
+
+    /// <summary>Name of the saved config currently loaded in the form (shown as a chip on the right). Null/empty hides it.</summary>
+    public string? ProfileName
+    {
+        get => profileName;
+        set { if (profileName == value) return; profileName = value; Invalidate(); }
+    }
 
     public HeaderBar()
     {
         SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer |
                  ControlStyles.ResizeRedraw | ControlStyles.SupportsTransparentBackColor, true);
         BackColor = Color.Transparent;
+        Burger.Size = new Size(44, 44);
+        Controls.Add(Burger);
+    }
+
+    protected override void OnLayout(LayoutEventArgs levent)
+    {
+        base.OnLayout(levent);
+        Burger.Location = new Point(0, Math.Max(0, (Height - Burger.Height) / 2));
     }
 
     protected override void OnPaint(PaintEventArgs e)
@@ -202,7 +345,7 @@ public sealed class HeaderBar : Control
         base.OnPaint(e);
         var g = e.Graphics; Pal.Smooth(g);
         float top = (Height - 48f) / 2f;
-        var logo = new RectangleF(0, top, 48, 48);
+        var logo = new RectangleF(LogoX, top, 48, 48);
         using (var path = Pal.Round(logo, 15))
         using (var br = new LinearGradientBrush(logo, Pal.Accent, Pal.Accent2, 45f))
         {
@@ -212,8 +355,33 @@ public sealed class HeaderBar : Control
             g.FillPath(br, path);
         }
         Icons.Draw(g, IconKind.Shield, new RectangleF(logo.X + 13, logo.Y + 13, 22, 22), Color.White, 2.1f);
-        Pal.DrawText(g, "Open-SSTP", title, Pal.Text, new RectangleF(64, top - 5, Width - 64, 34), v: StringAlignment.Center);
-        Pal.DrawText(g, "SOFTETHER VPN FOR WINDOWS", sub, Pal.Muted, new RectangleF(66, top + 29, Width - 66, 16), v: StringAlignment.Center);
+
+        float textX = LogoX + 64;
+        float textW = Math.Max(40, Width - textX);
+        string? chip = string.IsNullOrWhiteSpace(profileName) ? null : profileName!.Trim();
+        float chipLeft = Width;
+        if (chip is not null)
+        {
+            float tw = Math.Min(220f, g.MeasureString(chip, chipFont).Width);
+            float cw = tw + 54f, ch = 34f;
+            var rect = new RectangleF(Width - cw - 0.5f, (Height - ch) / 2f, cw, ch);
+            if (rect.X > textX + 150)
+            {
+                using (var path = Pal.Round(rect, ch / 2f))
+                using (var fill = new SolidBrush(Pal.A(Pal.Accent, 26)))
+                using (var pen = new Pen(Pal.A(Pal.Accent, 90), 1f))
+                {
+                    g.FillPath(fill, path);
+                    g.DrawPath(pen, path);
+                }
+                Icons.Draw(g, IconKind.Bolt, new RectangleF(rect.X + 12, rect.Y + 9, 16, 16), Pal.AccentSoft, 1.8f);
+                Pal.DrawText(g, chip, chipFont, Pal.Text, new RectangleF(rect.X + 34, rect.Y, rect.Width - 40, rect.Height), v: StringAlignment.Center, ellipsis: true);
+                chipLeft = rect.X - 8;
+            }
+        }
+        textW = Math.Max(40, chipLeft - textX);
+        Pal.DrawText(g, "Open-SSTP", title, Pal.Text, new RectangleF(textX, top - 5, textW, 34), v: StringAlignment.Center);
+        Pal.DrawText(g, "SOFTETHER VPN FOR WINDOWS", sub, Pal.Muted, new RectangleF(textX + 2, top + 29, textW, 16), v: StringAlignment.Center);
     }
 }
 
@@ -486,6 +654,11 @@ public sealed class ToggleSwitch : Control
 
     public event EventHandler? CheckedChanged;
 
+    /// <summary>First (bigger) line. Defaults to the "Remember me" row text of the main form.</summary>
+    public string Title { get; set; } = "مرا به خاطر بسپار";
+    /// <summary>Second (smaller, muted) line.</summary>
+    public string Subtitle { get; set; } = "Remember me";
+
     public ToggleSwitch()
     {
         SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer |
@@ -518,6 +691,7 @@ public sealed class ToggleSwitch : Control
     protected override void OnClick(EventArgs e) { base.OnClick(e); Checked = !Checked; }
     protected override bool IsInputKey(Keys keyData) => keyData == Keys.Space || base.IsInputKey(keyData);
     protected override void OnKeyDown(KeyEventArgs e) { base.OnKeyDown(e); if (e.KeyCode == Keys.Space) { Checked = !Checked; e.Handled = true; } }
+    protected override void OnMouseWheel(MouseEventArgs e) { base.OnMouseWheel(e); ScrollHelper.Forward(this, e); }
     protected override void OnGotFocus(EventArgs e) { base.OnGotFocus(e); Invalidate(); }
     protected override void OnLostFocus(EventArgs e) { base.OnLostFocus(e); Invalidate(); }
     protected override void Dispose(bool disposing) { if (disposing) t.Dispose(); base.Dispose(disposing); }
@@ -526,8 +700,8 @@ public sealed class ToggleSwitch : Control
     {
         base.OnPaint(e);
         var g = e.Graphics; Pal.Smooth(g);
-        Pal.DrawText(g, "مرا به خاطر بسپار", f1, Pal.Text, new RectangleF(2, 4, Width - 70, 24), v: StringAlignment.Center);
-        Pal.DrawText(g, "Remember me", f2, Pal.Muted, new RectangleF(2, 26, Width - 70, 18), v: StringAlignment.Center);
+        Pal.DrawText(g, Title, f1, Pal.Text, new RectangleF(2, 4, Width - 70, 24), v: StringAlignment.Center, ellipsis: true);
+        Pal.DrawText(g, Subtitle, f2, Pal.Muted, new RectangleF(2, 26, Width - 70, 18), v: StringAlignment.Center, ellipsis: true);
 
         const float tw = 48f, th = 28f;
         var track = new RectangleF(Width - tw - 2, (Height - th) / 2f, tw, th);
@@ -550,6 +724,13 @@ public sealed class GradientButton : Button
     bool hover, down;
     readonly Font font = new("Segoe UI Semibold", 12.5f);
 
+    /// <summary>Icon drawn before the label (null = no icon).</summary>
+    public IconKind? Glyph { get; set; } = IconKind.Power;
+    /// <summary>Force the red/orange look (true) or the blue/violet look (false). Null = red only while the text is "Disconnect".</summary>
+    public bool? Danger { get; set; }
+    /// <summary>Quiet outlined look for secondary actions such as Cancel.</summary>
+    public bool Secondary { get; set; }
+
     public GradientButton()
     {
         SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer |
@@ -571,27 +752,41 @@ public sealed class GradientButton : Button
     protected override void OnPaint(PaintEventArgs pevent)
     {
         var g = pevent.Graphics; Pal.Smooth(g);
-        bool danger = string.Equals(Text, "Disconnect", StringComparison.OrdinalIgnoreCase);
+        bool danger = Danger ?? string.Equals(Text, "Disconnect", StringComparison.OrdinalIgnoreCase);
         Color a = danger ? Pal.DangerA : Pal.Accent, b = danger ? Pal.DangerB : Pal.Accent2;
         int alpha = Enabled ? 255 : 120;
 
         var rect = new RectangleF(1f, 1f, Width - 3f, Height - 3f);
         using var path = Pal.Round(rect, 18);
         if (rect.Width < 4 || rect.Height < 4) return;
-        using (var br = new LinearGradientBrush(rect, Pal.A(a, alpha), Pal.A(b, alpha), LinearGradientMode.Horizontal))
+        if (Secondary)
+        {
+            using var sf = new SolidBrush(Pal.A(Pal.CardHi, alpha));
+            using var sp = new Pen(Pal.Stroke, 1.2f);
+            g.FillPath(sf, path);
+            g.DrawPath(sp, path);
+        }
+        else
+        {
+            using var br = new LinearGradientBrush(rect, Pal.A(a, alpha), Pal.A(b, alpha), LinearGradientMode.Horizontal);
             g.FillPath(br, path);
+        }
         if (Enabled && hover && !down) { using var hi = new SolidBrush(Color.FromArgb(24, 255, 255, 255)); g.FillPath(hi, path); }
         if (down) { using var lo = new SolidBrush(Color.FromArgb(36, 0, 0, 0)); g.FillPath(lo, path); }
 
         string label = Text;
         var sz = g.MeasureString(label, font);
         const float iconSize = 20f, gap = 10f;
-        float total = iconSize + gap + sz.Width;
+        bool hasIcon = Glyph.HasValue;
+        float total = (hasIcon ? iconSize + gap : 0f) + sz.Width;
         float x0 = (Width - total) / 2f;
-        var tint = Color.FromArgb(Enabled ? 255 : 170, 255, 255, 255);
-        Icons.Draw(g, IconKind.Power, new RectangleF(x0, (Height - iconSize) / 2f, iconSize, iconSize), tint, 2.2f);
-        Pal.DrawText(g, label, font, tint, new RectangleF(x0 + iconSize + gap, 0, sz.Width + 6, Height), v: StringAlignment.Center);
+        int ta = Enabled ? 255 : 170;
+        var tint = Secondary ? Color.FromArgb(ta, Pal.Text2) : Color.FromArgb(ta, 255, 255, 255);
+        if (hasIcon) Icons.Draw(g, Glyph!.Value, new RectangleF(x0, (Height - iconSize) / 2f, iconSize, iconSize), tint, 2.2f);
+        Pal.DrawText(g, label, font, tint, new RectangleF(x0 + (hasIcon ? iconSize + gap : 0f), 0, sz.Width + 6, Height), v: StringAlignment.Center);
     }
+
+    protected override void OnMouseWheel(MouseEventArgs e) { base.OnMouseWheel(e); ScrollHelper.Forward(this, e); }
 }
 
 /// <summary>Live traffic graph: smooth gradient-filled lines for download and upload.</summary>

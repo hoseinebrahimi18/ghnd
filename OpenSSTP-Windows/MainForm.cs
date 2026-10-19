@@ -5,7 +5,7 @@ using Microsoft.Win32;
 
 namespace OpenSSTP.Windows;
 
-public sealed class MainForm : Form
+public sealed partial class MainForm : Form
 {
     TextBox host = new() { PlaceholderText = "VPN Gate hostname or IP[:port]", Width = 280 };
     TextBox user = new() { PlaceholderText = "Username (VPN Gate: vpn)", Width = 280 };
@@ -57,7 +57,7 @@ public sealed class MainForm : Form
         var root = new BufferedTable { Dock = DockStyle.Fill, Padding = new Padding(28, 18, 28, 24), ColumnCount = 1, RowCount = 2 };
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 76)); root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         Controls.Add(root);
-        root.Controls.Add(new HeaderBar { Dock = DockStyle.Fill, Margin = new Padding(0, 0, 0, 10) }, 0, 0);
+        root.Controls.Add(header, 0, 0);
 
         var body = new BufferedTable { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1 };
         body.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 57)); body.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 43));
@@ -135,6 +135,7 @@ public sealed class MainForm : Form
         trayIcon.Visible = true;
         trayReady = true;
         RefreshTrayMenu();
+        InitMenu(); // hamburger side menu (MainForm.Menu.cs)
 
         // A second launch of the exe (or Start-menu shortcut) brings this instance back from the tray.
         try
@@ -156,6 +157,7 @@ public sealed class MainForm : Form
             if (!exitRequested && !systemClosing && trayReady)
             {
                 e.Cancel = true;
+                if (!settings.CloseToTray) { _ = ExitApplicationAsync(); return; }
                 HideToTray();
                 if (!trayHintShown)
                 {
@@ -299,7 +301,7 @@ public sealed class MainForm : Form
     void NotifyTray(string message, ToolTipIcon icon = ToolTipIcon.Info)
     {
         // Balloons are only useful when the window is out of sight.
-        if (!Visible) trayIcon.ShowBalloonTip(2500, "Open-SSTP", message, icon);
+        if (!Visible && settings.Notifications) trayIcon.ShowBalloonTip(2500, "Open-SSTP", message, icon);
     }
 
     async Task ToggleConnectionAsync()
@@ -336,6 +338,7 @@ public sealed class MainForm : Form
         {
             engine ??= new SoftEtherClientEngine();
             await engine.ConnectAsync(host.Text, user.Text, pass.Text);
+            TouchActiveProfile();
             lastStatusPoll = DateTime.MinValue;
             note.Text = "Connection request sent. Waiting for SoftEther to confirm the session...";
             await PollConnectionStateAsync();
